@@ -1,0 +1,178 @@
+name: Validate Pull Request
+
+on:
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - 'src/**/*.ps1'
+      - 'src/**/*.psm1'
+      - 'src/**/*.psd1'
+      - '.github/workflows/**'
+
+jobs:
+  validate:
+    name: Validate PowerShell Code
+    runs-on: windows-latest
+    
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+      
+    - name: Setup PowerShell
+      shell: pwsh
+      run: |
+        # Ensure we have the latest PowerShell modules
+        Install-Module -Name PSScriptAnalyzer -Force -Scope CurrentUser
+        Install-Module -Name Pester -Force -Scope CurrentUser -RequiredVersion 5.5.0
+        Install-Module -Name MetaNull.ModuleMaker -Force -Scope CurrentUser
+        
+        # Display versions for debugging
+        Write-Host "PowerShell Version: $($PSVersionTable.PSVersion)"
+        Write-Host "PSScriptAnalyzer Version: $(Get-Module PSScriptAnalyzer -ListAvailable | Select-Object -First 1 | Select-Object -ExpandProperty Version)"
+        Write-Host "Pester Version: $(Get-Module Pester -ListAvailable | Select-Object -First 1 | Select-Object -ExpandProperty Version)"
+        Write-Host "MetaNull.ModuleMaker Version: $(Get-Module MetaNull.ModuleMaker -ListAvailable | Select-Object -First 1 | Select-Object -ExpandProperty Version)"
+    
+    - name: Run PSScriptAnalyzer
+      shell: pwsh
+      run: |
+        Write-Host "Running PSScriptAnalyzer on PowerShell files..."
+        
+        # Get all PowerShell files
+        $PowerShellFiles = Get-ChildItem -Path "src" -Recurse -Include "*.ps1", "*.psm1", "*.psd1" | Where-Object { $_.Name -notlike "*.Tests.ps1" }
+        
+        if ($PowerShellFiles.Count -eq 0) {
+          Write-Host "No PowerShell files found to analyze."
+          exit 0
+        }
+        
+        Write-Host "Found $($PowerShellFiles.Count) PowerShell files to analyze"
+        
+        $Issues = @()
+        foreach ($File in $PowerShellFiles) {
+          Write-Host "Analyzing: $($File.FullName)"
+          $Results = Invoke-ScriptAnalyzer -Path $File.FullName -Severity Error, Warning
+          if ($Results) {
+            $Issues += $Results
+            Write-Host "  Found $($Results.Count) issues"
+            foreach ($Issue in $Results) {
+              Write-Host "    [$($Issue.Severity)] $($Issue.RuleName): $($Issue.Message) (Line $($Issue.Line))"
+            }
+          } else {
+            Write-Host "  No issues found"
+          }
+        }
+        
+        if ($Issues.Count -gt 0) {
+          Write-Host "##[error]PSScriptAnalyzer found $($Issues.Count) issues that must be fixed:"
+          foreach ($Issue in $Issues) {
+            Write-Host "##[error]$($Issue.ScriptPath):$($Issue.Line):$($Issue.Column): [$($Issue.Severity)] $($Issue.RuleName) - $($Issue.Message)"
+          }
+          exit 1
+        } else {
+          Write-Host "✅ PSScriptAnalyzer validation passed - no issues found"
+        }
+    
+    - name: Run Pester Tests
+      shell: pwsh
+      run: |
+        Write-Host "Running Pester tests..."
+        
+        # Navigate to the module directory
+        $ModulePath = "src/MetaNull.InventoryCli"
+        if (-not (Test-Path $ModulePath)) {
+          Write-Host "##[error]Module path not found: $ModulePath"
+          exit 1
+        }
+        
+        Set-Location $ModulePath
+        
+        # Find test files
+        $TestFiles = Get-ChildItem -Path "test" -Recurse -Filter "*.Tests.ps1" -ErrorAction SilentlyContinue
+        
+        if ($TestFiles.Count -eq 0) {
+          Write-Host "No test files found. This is acceptable for initial setup."
+          exit 0
+        }
+        
+        Write-Host "Found $($TestFiles.Count) test files"
+        
+        # Configure Pester
+        $PesterConfig = New-PesterConfiguration
+        $PesterConfig.Run.Path = "test"
+        $PesterConfig.Run.PassThru = $true
+        $PesterConfig.Output.Verbosity = 'Detailed'
+        $PesterConfig.CodeCoverage.Enabled = $false  # Disable code coverage for PR validation
+        
+        # Run tests
+        $TestResults = Invoke-Pester -Configuration $PesterConfig
+        
+        # Report results
+        Write-Host "Test Results:"
+        Write-Host "  Total Tests: $($TestResults.TotalCount)"
+        Write-Host "  Passed: $($TestResults.PassedCount)"
+        Write-Host "  Failed: $($TestResults.FailedCount)"
+        Write-Host "  Skipped: $($TestResults.SkippedCount)"
+        
+        if ($TestResults.FailedCount -gt 0) {
+          Write-Host "##[error]$($TestResults.FailedCount) test(s) failed"
+          foreach ($FailedTest in $TestResults.Failed) {
+            Write-Host "##[error]Failed: $($FailedTest.ExpandedName)"
+            Write-Host "##[error]  Error: $($FailedTest.ErrorRecord.Exception.Message)"
+          }
+          exit 1
+        } else {
+          Write-Host "✅ All tests passed successfully"
+        }
+    
+    - name: Test Module Build
+      shell: pwsh
+      run: |
+        Write-Host "Testing module build process..."
+        
+        # Navigate to the module directory
+        $ModulePath = "src/MetaNull.InventoryCli"
+        Set-Location $ModulePath
+        
+        # Check if Build.ps1 exists
+        if (-not (Test-Path "Build.ps1")) {
+          Write-Host "##[error]Build.ps1 not found in module directory"
+          exit 1
+        }
+        
+        # Run the build script
+        try {
+          Write-Host "Executing Build.ps1..."
+          $BuildResult = & ".\Build.ps1" -Verbose
+          
+          if ($BuildResult) {
+            Write-Host "✅ Module build completed successfully"
+            Write-Host "Built module path: $($BuildResult.FullName)"
+            
+            # Verify the built module can be imported
+            $ManifestPath = Join-Path $BuildResult.FullName "MetaNull.InventoryCli.psd1"
+            if (Test-Path $ManifestPath) {
+              Write-Host "Testing module import..."
+              Test-ModuleManifest -Path $ManifestPath
+              Write-Host "✅ Module manifest is valid"
+            } else {
+              Write-Host "##[warning]Module manifest not found at expected location"
+            }
+          } else {
+            Write-Host "##[error]Build script did not return a result"
+            exit 1
+          }
+        } catch {
+          Write-Host "##[error]Build failed with error: $($_.Exception.Message)"
+          Write-Host "##[error]Stack trace: $($_.ScriptStackTrace)"
+          exit 1
+        }
+    
+    - name: Validation Summary
+      shell: pwsh
+      run: |
+        Write-Host "🎉 Pull Request Validation Summary:"
+        Write-Host "✅ PSScriptAnalyzer - All code quality checks passed"
+        Write-Host "✅ Pester Tests - All tests executed successfully"
+        Write-Host "✅ Module Build - Build process completed without errors"
+        Write-Host ""
+        Write-Host "This pull request is ready for review! 🚀"
