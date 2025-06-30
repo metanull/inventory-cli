@@ -1,0 +1,264 @@
+name: Publish to PSGallery
+
+on:
+  workflow_dispatch:
+    inputs:
+      version_increment:
+        description: 'Version increment type'
+        required: true
+        default: 'build'
+        type: choice
+        options:
+        - build
+        - revision
+        - minor
+        - major
+      force_publish:
+        description: 'Force publish even if version exists'
+        required: false
+        default: false
+        type: boolean
+  
+  push:
+    branches: [ main ]
+    paths:
+      - 'src/**/*.ps1'
+      - 'src/**/*.psm1'
+      - 'src/**/*.psd1'
+
+jobs:
+  publish:
+    name: Build and Publish Module
+    runs-on: windows-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+    
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # Fetch full history for proper versioning
+    
+    - name: Setup PowerShell Environment
+      shell: pwsh
+      run: |
+        Write-Host "Setting up PowerShell environment..."
+        
+        # Install required modules
+        Install-Module -Name PSScriptAnalyzer -Force -Scope CurrentUser
+        Install-Module -Name Pester -Force -Scope CurrentUser -RequiredVersion 5.5.0
+        Install-Module -Name MetaNull.ModuleMaker -Force -Scope CurrentUser
+        Install-Module -Name Microsoft.PowerShell.PSResourceGet -Force -Scope CurrentUser
+        
+        # Display environment information
+        Write-Host "PowerShell Version: $($PSVersionTable.PSVersion)"
+        Write-Host "OS: $($PSVersionTable.OS)"
+        Write-Host "PSScriptAnalyzer Version: $(Get-Module PSScriptAnalyzer -ListAvailable | Select-Object -First 1 | Select-Object -ExpandProperty Version)"
+        Write-Host "Pester Version: $(Get-Module Pester -ListAvailable | Select-Object -First 1 | Select-Object -ExpandProperty Version)"
+        Write-Host "Microsoft.PowerShell.PSResourceGet Version: $(Get-Module Microsoft.PowerShell.PSResourceGet -ListAvailable | Select-Object -First 1 | Select-Object -ExpandProperty Version)"
+    
+    - name: Validate Code Quality
+      shell: pwsh
+      run: |
+        Write-Host "Validating code quality before publishing..."
+        
+        # Run PSScriptAnalyzer
+        $PowerShellFiles = Get-ChildItem -Path "src" -Recurse -Include "*.ps1", "*.psm1", "*.psd1" | Where-Object { $_.Name -notlike "*.Tests.ps1" }
+        
+        if ($PowerShellFiles.Count -gt 0) {
+          $Issues = @()
+          foreach ($File in $PowerShellFiles) {
+            $Results = Invoke-ScriptAnalyzer -Path $File.FullName -Severity Error, Warning
+            if ($Results) {
+              $Issues += $Results
+            }
+          }
+          
+          if ($Issues.Count -gt 0) {
+            Write-Host "##[error]PSScriptAnalyzer found issues that must be fixed before publishing"
+            foreach ($Issue in $Issues) {
+              Write-Host "##[error]$($Issue.ScriptPath):$($Issue.Line): [$($Issue.Severity)] $($Issue.RuleName) - $($Issue.Message)"
+            }
+            exit 1
+          }
+        }
+        
+        Write-Host "✅ Code quality validation passed"
+    
+    - name: Run Tests
+      shell: pwsh
+      run: |
+        Write-Host "Running all tests before publishing..."
+        
+        $ModulePath = "src/MetaNull.InventoryCli"
+        Set-Location $ModulePath
+        
+        $TestFiles = Get-ChildItem -Path "test" -Recurse -Filter "*.Tests.ps1" -ErrorAction SilentlyContinue
+        
+        if ($TestFiles.Count -gt 0) {
+          $PesterConfig = New-PesterConfiguration
+          $PesterConfig.Run.Path = "test"
+          $PesterConfig.Run.PassThru = $true
+          $PesterConfig.Output.Verbosity = 'Detailed'
+          
+          $TestResults = Invoke-Pester -Configuration $PesterConfig
+          
+          if ($TestResults.FailedCount -gt 0) {
+            Write-Host "##[error]$($TestResults.FailedCount) test(s) failed"
+            exit 1
+          }
+          
+          Write-Host "✅ All $($TestResults.PassedCount) tests passed"
+        } else {
+          Write-Host "No test files found - skipping test execution"
+        }
+    
+    - name: Build Module
+      shell: pwsh
+      run: |
+        Write-Host "Building module for publication..."
+        
+        $ModulePath = "src/MetaNull.InventoryCli"
+        Set-Location $ModulePath
+        
+        # Determine version increment
+        $VersionIncrement = "${{ github.event.inputs.version_increment }}"
+        if ([string]::IsNullOrEmpty($VersionIncrement)) {
+          $VersionIncrement = "build"  # Default for automatic builds
+        }
+        
+        Write-Host "Version increment type: $VersionIncrement"
+        
+        # Build with appropriate version increment
+        $BuildArgs = @{}
+        switch ($VersionIncrement.ToLower()) {
+          "major" { $BuildArgs.IncrementMajor = $true }
+          "minor" { $BuildArgs.IncrementMinor = $true }
+          "revision" { $BuildArgs.IncrementRevision = $true }
+          default { 
+            Write-Host "Using default build increment (build number only)"
+          }
+        }
+        
+        try {
+          $BuildResult = & ".\Build.ps1" @BuildArgs -Verbose
+          
+          if ($BuildResult) {
+            Write-Host "✅ Module built successfully"
+            Write-Host "Built module path: $($BuildResult.FullName)"
+            
+            # Store build path for next step
+            $BuildPath = $BuildResult.FullName
+            Write-Host "##[set-output name=build_path]$BuildPath"
+            
+            # Get version information
+            $ManifestPath = Join-Path $BuildPath "MetaNull.InventoryCli.psd1"
+            $Manifest = Test-ModuleManifest -Path $ManifestPath
+            $Version = $Manifest.Version
+            Write-Host "Module version: $Version"
+            Write-Host "##[set-output name=module_version]$Version"
+            
+          } else {
+            Write-Host "##[error]Build failed - no result returned"
+            exit 1
+          }
+        } catch {
+          Write-Host "##[error]Build failed: $($_.Exception.Message)"
+          exit 1
+        }
+      id: build
+    
+    - name: Check if Version Exists in PSGallery
+      shell: pwsh
+      run: |
+        Write-Host "Checking if version already exists in PSGallery..."
+        
+        $ModuleName = "MetaNull.InventoryCli"
+        $Version = "${{ steps.build.outputs.module_version }}"
+        $ForcePublish = [bool]::Parse("${{ github.event.inputs.force_publish }}")
+        
+        try {
+          $ExistingModule = Find-PSResource -Name $ModuleName -Version $Version -Repository PSGallery -ErrorAction SilentlyContinue
+          
+          if ($ExistingModule -and -not $ForcePublish) {
+            Write-Host "##[error]Version $Version already exists in PSGallery"
+            Write-Host "##[error]Use 'force_publish' option or increment the version to publish"
+            exit 1
+          } elseif ($ExistingModule -and $ForcePublish) {
+            Write-Host "##[warning]Version $Version exists but force_publish is enabled"
+          } else {
+            Write-Host "✅ Version $Version is available for publishing"
+          }
+        } catch {
+          Write-Host "Could not check existing versions (this is normal for new modules): $($_.Exception.Message)"
+        }
+    
+    - name: Publish to PSGallery
+      shell: pwsh
+      env:
+        PSGALLERY_API_KEY: ${{ secrets.PSGALLERY_API_KEY }}
+      run: |
+        Write-Host "Publishing module to PSGallery..."
+        
+        if ([string]::IsNullOrEmpty($env:PSGALLERY_API_KEY)) {
+          Write-Host "##[error]PSGALLERY_API_KEY secret is not configured"
+          Write-Host "##[error]Please add your PSGallery API key as a repository secret named 'PSGALLERY_API_KEY'"
+          exit 1
+        }
+        
+        $ModulePath = "src/MetaNull.InventoryCli"
+        Set-Location $ModulePath
+        
+        # Create credential object for API key
+        $SecureApiKey = ConvertTo-SecureString $env:PSGALLERY_API_KEY -AsPlainText -Force
+        $Credential = New-Object PSCredential("apikey", $SecureApiKey)
+        
+        try {
+          # Use the Publish.ps1 script from MetaNull.ModuleMaker
+          $PublishArgs = @{
+            Path = "${{ steps.build.outputs.build_path }}"
+            RepositoryName = "PSGallery"
+            Credential = $Credential
+          }
+          
+          & ".\Publish.ps1" @PublishArgs -Verbose
+          
+          Write-Host "✅ Module published successfully to PSGallery!"
+          Write-Host "🎉 MetaNull.InventoryCli version ${{ steps.build.outputs.module_version }} is now available"
+          
+        } catch {
+          Write-Host "##[error]Failed to publish module: $($_.Exception.Message)"
+          Write-Host "##[error]Stack trace: $($_.ScriptStackTrace)"
+          exit 1
+        }
+    
+    - name: Create Release Tag
+      shell: pwsh
+      run: |
+        Write-Host "Creating release tag..."
+        
+        $Version = "${{ steps.build.outputs.module_version }}"
+        $TagName = "v$Version"
+        
+        # Configure git
+        git config user.name "github-actions[bot]"
+        git config user.email "github-actions[bot]@users.noreply.github.com"
+        
+        # Create and push tag
+        git tag $TagName
+        git push origin $TagName
+        
+        Write-Host "✅ Created release tag: $TagName"
+    
+    - name: Publication Summary
+      shell: pwsh
+      run: |
+        Write-Host "🎉 Publication Summary:"
+        Write-Host "✅ Module: MetaNull.InventoryCli"
+        Write-Host "✅ Version: ${{ steps.build.outputs.module_version }}"
+        Write-Host "✅ Repository: PSGallery"
+        Write-Host "✅ Status: Successfully Published"
+        Write-Host ""
+        Write-Host "The module is now available for installation:"
+        Write-Host "Install-Module -Name MetaNull.InventoryCli -Repository PSGallery"
+        Write-Host ""
+        Write-Host "🔗 PSGallery Link: https://www.powershellgallery.com/packages/MetaNull.InventoryCli/${{ steps.build.outputs.module_version }}"
