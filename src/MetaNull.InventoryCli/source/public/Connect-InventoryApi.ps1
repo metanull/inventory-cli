@@ -76,16 +76,16 @@ try {
                 return $false
             }
         } else {
-            Write-Error "Authentication response did not contain a valid token"
+            Write-Warning "Authentication response did not contain a valid token"
             return $false
         }
     }
     catch {
-        Write-Error "Authentication failed: $($_.Exception.Message)"
+        Write-Warning "Authentication failed: $($_.Exception.Message)"
         return $false
     }
 }
 catch {
-    Write-Error "Error during authentication process: $($_.Exception.Message)"
+    Write-Warning "Error during authentication process: $($_.Exception.Message)"
     return $false
 }

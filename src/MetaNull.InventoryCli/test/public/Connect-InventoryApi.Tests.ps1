@@ -38,11 +38,6 @@ Describe "Connect-InventoryApi" -Tag "UnitTest" {
     
     Context "Successful authentication" {
         BeforeEach {
-            # Clean up test registry
-            if (Test-Path $script:INVENTORY_CLI_REGISTRY_PATH) {
-                Remove-Item -Path $script:INVENTORY_CLI_REGISTRY_PATH -Recurse -Force
-            }
-
             Mock Invoke-RestMethod {
                 # Simulate a failed API call
                 return $null
@@ -77,6 +72,13 @@ Describe "Connect-InventoryApi" -Tag "UnitTest" {
                 # Expected to fail without actual API, but should not be a parameter error
                 $_.Exception.Message | Should -Not -Match "parameter"
             }
+        }
+    }
+
+    AfterEach {
+        # Clean up test registry
+        if (Test-Path $script:INVENTORY_CLI_REGISTRY_PATH) {
+            Remove-Item -Path $script:INVENTORY_CLI_REGISTRY_PATH -Recurse -Force
         }
     }
     

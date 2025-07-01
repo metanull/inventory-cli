@@ -46,11 +46,6 @@ Describe "Disconnect-InventoryApi" -Tag "UnitTest" {
     
     Context "Disconnect when token exists" {
         BeforeEach {
-            # Clean up test registry
-            if (Test-Path $script:INVENTORY_CLI_REGISTRY_PATH) {
-                Remove-Item -Path $script:INVENTORY_CLI_REGISTRY_PATH -Recurse -Force
-            }
-            
             # Store a test token
             $TestToken = "test-auth-token-12345"
             $SecureToken = ConvertTo-SecureString -String $TestToken -AsPlainText -Force
@@ -96,14 +91,15 @@ Describe "Disconnect-InventoryApi" -Tag "UnitTest" {
             }
         }
     }
+
+    AfterEach {
+        # Clean up test registry
+        if (Test-Path $script:INVENTORY_CLI_REGISTRY_PATH) {
+            Remove-Item -Path $script:INVENTORY_CLI_REGISTRY_PATH -Recurse -Force
+        }
+    }
     
     Context "Disconnect when no token exists" {
-        BeforeEach {
-            # Clean up test registry
-            if (Test-Path $script:INVENTORY_CLI_REGISTRY_PATH) {
-                Remove-Item -Path $script:INVENTORY_CLI_REGISTRY_PATH -Recurse -Force
-            }
-        }
         
         It "Should return true when no token is stored" {
             $Result = Disconnect-InventoryApi

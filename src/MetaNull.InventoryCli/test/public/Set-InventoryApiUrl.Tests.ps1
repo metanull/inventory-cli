@@ -26,15 +26,15 @@ Describe "Set-InventoryApiUrl" -Tag "UnitTest" {
             . ($RegistryScript) @args | write-Output
         }
     }
-    
+
+    AfterEach {
+        # Clean up test registry
+        if (Test-Path $script:INVENTORY_CLI_REGISTRY_PATH) {
+            Remove-Item -Path $script:INVENTORY_CLI_REGISTRY_PATH -Recurse -Force
+        }
+    }
     
     Context "Setting API URL with default value" {
-        BeforeEach {
-            # Clean up test registry
-            if (Test-Path $script:INVENTORY_CLI_REGISTRY_PATH) {
-                Remove-Item -Path $script:INVENTORY_CLI_REGISTRY_PATH -Recurse -Force
-            }
-        }
         
         It "Should set the default URL when no parameter is provided" {
             $Result = Set-InventoryApiUrl
@@ -47,12 +47,6 @@ Describe "Set-InventoryApiUrl" -Tag "UnitTest" {
     }
     
     Context "Setting API URL with custom value" {
-        BeforeEach {
-            # Clean up test registry
-            if (Test-Path $script:INVENTORY_CLI_REGISTRY_PATH) {
-                Remove-Item -Path $script:INVENTORY_CLI_REGISTRY_PATH -Recurse -Force
-            }
-        }
         
         It "Should set a custom HTTP URL" {
             $TestUrl = "http://api.example.com:8080"
@@ -76,12 +70,6 @@ Describe "Set-InventoryApiUrl" -Tag "UnitTest" {
     }
     
     Context "URL validation" {
-        BeforeEach {
-            # Clean up test registry
-            if (Test-Path $script:INVENTORY_CLI_REGISTRY_PATH) {
-                Remove-Item -Path $script:INVENTORY_CLI_REGISTRY_PATH -Recurse -Force
-            }
-        }
         
         It "Should reject invalid URL formats" {
             $InvalidUrls = @(
@@ -91,8 +79,7 @@ Describe "Set-InventoryApiUrl" -Tag "UnitTest" {
             )
             
             foreach ($InvalidUrl in $InvalidUrls) {
-                $Result = Set-InventoryApiUrl -Url $InvalidUrl 2>$null
-                $Result | Should -Be $false -Because "URL '$InvalidUrl' should be rejected"
+                { Set-InventoryApiUrl -Url $InvalidUrl 2>$null } | Should -Throw -Because "URL '$InvalidUrl' should be rejected"
             }
         }
         

@@ -30,6 +30,13 @@ Describe "Remove-InventoryApiUrl" -Tag "UnitTest" {
             . ($RegistryScript) @args | write-Output
         }
     }
+
+    AfterEach {
+        # Clean up test registry
+        if (Test-Path $script:INVENTORY_CLI_REGISTRY_PATH) {
+            Remove-Item -Path $script:INVENTORY_CLI_REGISTRY_PATH -Recurse -Force
+        }
+    }
     
     
     Context "Removing existing API URL" {
@@ -38,9 +45,13 @@ Describe "Remove-InventoryApiUrl" -Tag "UnitTest" {
             if (Test-Path $script:INVENTORY_CLI_REGISTRY_PATH) {
                 Remove-Item -Path $script:INVENTORY_CLI_REGISTRY_PATH -Recurse -Force
             }
-            
-            # Set up a configured API URL
-            Set-InventoryRegistryValue -KeyName "Configuration" -ValueName "ApiUrl" -Value "https://test.example.com" | Out-Null
+        }
+
+        AfterEach {
+            # Clean up after each test
+            if (Test-Path $script:INVENTORY_CLI_REGISTRY_PATH) {
+                Remove-Item -Path $script:INVENTORY_CLI_REGISTRY_PATH -Recurse -Force
+            }
         }
         
         It "Should remove the configured URL" {
@@ -54,13 +65,7 @@ Describe "Remove-InventoryApiUrl" -Tag "UnitTest" {
     }
     
     Context "Removing non-existent API URL" {
-        BeforeEach {
-            # Clean up test registry
-            if (Test-Path $script:INVENTORY_CLI_REGISTRY_PATH) {
-                Remove-Item -Path $script:INVENTORY_CLI_REGISTRY_PATH -Recurse -Force
-            }
-        }
-        
+
         It "Should return true when URL is not configured" {
             $Result = Remove-InventoryApiUrl
             $Result | Should -Be $true
@@ -69,13 +74,14 @@ Describe "Remove-InventoryApiUrl" -Tag "UnitTest" {
     
     Context "ShouldProcess support" {
         BeforeEach {
-            # Clean up test registry
+            # Set up a configured API URL
+            Set-InventoryRegistryValue -KeyName "Configuration" -ValueName "ApiUrl" -Value "https://test.example.com" | Out-Null
+        }
+        AfterEach {
+            # Clean up after each test
             if (Test-Path $script:INVENTORY_CLI_REGISTRY_PATH) {
                 Remove-Item -Path $script:INVENTORY_CLI_REGISTRY_PATH -Recurse -Force
             }
-            
-            # Set up a configured API URL
-            Set-InventoryRegistryValue -KeyName "Configuration" -ValueName "ApiUrl" -Value "https://test.example.com" | Out-Null
         }
         
         It "Should support WhatIf parameter" {

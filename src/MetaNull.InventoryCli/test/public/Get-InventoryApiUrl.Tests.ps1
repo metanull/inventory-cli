@@ -26,15 +26,16 @@ Describe "Get-InventoryApiUrl" -Tag "UnitTest" {
             . ($RegistryScript) @args | write-Output
         }
     }
+
+    AfterEach {
+        # Clean up test registry
+        if (Test-Path $script:INVENTORY_CLI_REGISTRY_PATH) {
+            Remove-Item -Path $script:INVENTORY_CLI_REGISTRY_PATH -Recurse -Force
+        }
+    }
     
     
     Context "When API URL is not configured" {
-        BeforeEach {
-            # Clean up test registry
-            if (Test-Path $script:INVENTORY_CLI_REGISTRY_PATH) {
-                Remove-Item -Path $script:INVENTORY_CLI_REGISTRY_PATH -Recurse -Force
-            }
-        }
         
         It "Should return the default URL" {
             $Result = Get-InventoryApiUrl
@@ -44,11 +45,6 @@ Describe "Get-InventoryApiUrl" -Tag "UnitTest" {
     
     Context "When API URL is configured" {
         BeforeEach {
-            # Clean up test registry
-            if (Test-Path $script:INVENTORY_CLI_REGISTRY_PATH) {
-                Remove-Item -Path $script:INVENTORY_CLI_REGISTRY_PATH -Recurse -Force
-            }
-            
             # Set up a configured API URL
             $TestUrl = "https://api.example.com:8443"
             Set-InventoryRegistryValue -KeyName "Configuration" -ValueName "ApiUrl" -Value $TestUrl | Out-Null
@@ -61,15 +57,6 @@ Describe "Get-InventoryApiUrl" -Tag "UnitTest" {
     }
     
     Context "When registry access fails" {
-        BeforeEach {
-            # Clean up test registry
-            if (Test-Path $script:INVENTORY_CLI_REGISTRY_PATH) {
-                Remove-Item -Path $script:INVENTORY_CLI_REGISTRY_PATH -Recurse -Force
-            }
-            
-            # Create an invalid registry path to simulate failure
-            # This will cause Get-InventoryRegistryValue to fail naturally
-        }
         
         It "Should return the default URL on error" {
             $Result = Get-InventoryApiUrl

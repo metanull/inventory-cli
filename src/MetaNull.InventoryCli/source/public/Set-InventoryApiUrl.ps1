@@ -25,10 +25,15 @@ Returns $true if the URL was set successfully, $false otherwise.
 [OutputType([bool])]
 param(
     [Parameter(Mandatory = $false)]
-    [ValidateNotNullOrEmpty()]
+    [ValidateScript({
+        $out = $null
+        if (([System.Uri]::TryCreate($_, [System.UriKind]::Absolute, [ref]$out)) -and $out.Scheme -in @('http', 'https')) {
+            return $true
+        }
+    })]
     [string]$Url = "http://127.0.0.1:8000"
 )
-
+Process {
     try {
         Write-Verbose "Setting API URL to: $Url"
 
@@ -40,7 +45,7 @@ param(
             }
         }
         catch {
-            Write-Error "Invalid URL format: $Url. Error: $($_.Exception.Message)"
+            Write-Warning "Invalid URL format: $Url. Error: $($_.Exception.Message)"
             return $false
         }
 
@@ -53,9 +58,10 @@ param(
             Write-Warning "Failed to set API URL in registry"
         }
 
-    return $Result
-}
-catch {
-    Write-Error "Error setting API URL: $($_.Exception.Message)"
-    return $false
+        return $Result
+    }
+    catch {
+        Write-Error "Error setting API URL: $($_.Exception.Message)"
+        return $false
+    }
 }
