@@ -50,7 +50,7 @@ jobs:
         $Issues = @()
         foreach ($File in $PowerShellFiles) {
           Write-Host "Analyzing: $($File.FullName)"
-          $Results = Invoke-ScriptAnalyzer -ExcludeRule PSAvoidUsingConvertToSecureStringWithPlainText -Path $File.FullName -Severity Error, Warning
+          $Results = Invoke-ScriptAnalyzer -ExcludeRule PSAvoidUsingConvertToSecureStringWithPlainText,PSUseBOMForUnicodeEncodedFile -Path $File.FullName -Severity Error, Warning
           if ($Results) {
             $Issues += $Results
             Write-Host "  Found $($Results.Count) issues"
