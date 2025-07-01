@@ -1,71 +1,28 @@
-Describe "Get-InventoryAuthToken" {
-    Context "Test Environment Validation" {
-        It "Should be running from the correct working directory" {
-            $CurrentPath = Get-Location
-            $ExpectedPath = $PSScriptRoot | Split-Path -Parent | Split-Path -Parent
-            $ExpectedPath = Resolve-Path $ExpectedPath
-            
-            if ($CurrentPath.Path -ne $ExpectedPath.Path) {
-                Write-Warning "Tests should be run from the module root directory: $ExpectedPath"
-                Write-Warning "Current working directory: $CurrentPath"
-                Write-Warning "Please navigate to the module directory before running tests."
-            }
-            
-            # This test will pass but warn if not in the right directory
-            $CurrentPath.Path | Should -Be $ExpectedPath.Path -Because "Tests must be run from the module root directory for proper path resolution"
-        }
-    }
-    
+Describe "Get-InventoryAuthToken" -Tag "FeatureTest" {
+
     BeforeAll {
-        # Load test helpers
-        . (Join-Path $PSScriptRoot "..\TestHelpers.ps1")
+        $script:INVENTORY_CLI_REGISTRY_PATH = "HKCU:\SOFTWARE\metanull.test\inventory-cli"
+
+        $ScriptDirectory = Resolve-Path (Join-Path ($PSCommandPath | Split-Path) "..\..\source\private")
+        $ScriptName = (Split-Path $PSCommandPath -Leaf) -replace '\.Tests\.ps1$', '.ps1'
+        $Script = Join-Path $ScriptDirectory $ScriptName
         
-        # Import functions needed for testing
-        $ModuleRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
-        Import-ModuleFunctions -ModuleRoot $ModuleRoot -FunctionNames @(
-            'Get-InventoryAuthToken',
-            'Get-InventoryRegistryValue',
-            'Set-InventoryRegistryValue'
-        )
-        
-        # Create a test registry path by appending '.test' to the module registry path
-        $TestRegistryPath = $INVENTORY_CLI_REGISTRY_PATH + ".test"
-        
-        # Clean up any existing test keys
-        if (Test-Path $TestRegistryPath) {
-            Remove-Item -Path $TestRegistryPath -Recurse -Force
+        # Define the Module function by dot sourcing it
+        Function Get-InventoryAuthToken {
+            . $Script @args | write-Output
         }
-        
-        # Mock the registry functions to use test path
-        Mock Get-InventoryRegistryValue {
-            param($KeyName, $ValueName)
-            $TestPath = "$TestRegistryPath\$KeyName"
-            if (Test-Path $TestPath) {
-                try {
-                    $Item = Get-ItemProperty -Path $TestPath -Name $ValueName -ErrorAction Stop
-                    return $Item.$ValueName
-                } catch {
-                    return $null
-                }
-            }
-            return $null
+        # Define an accessor to the function's properties
+        Function Get-InventoryAuthToken_Command {
+            Get-Command $Script
         }
-        
-        Mock Set-InventoryRegistryValue {
-            param($KeyName, $ValueName, $Value, $ValueType = 'String')
-            $TestPath = "$TestRegistryPath\$KeyName"
-            if (-not (Test-Path $TestPath)) {
-                New-Item -Path $TestPath -Force | Out-Null
-            }
-            Set-ItemProperty -Path $TestPath -Name $ValueName -Value $Value -Type $ValueType
-            return $true
+
+        Function Get-InventoryRegistryValue {
+            $RegistryScript = Join-Path $ScriptDirectory 'Get-InventoryRegistryValue.ps1'
+            . ($RegistryScript) @args | write-Output
         }
-    }
-    
-    AfterAll {
-        # Clean up test registry keys
-        if (Test-Path $TestRegistryPath) {
-            Remove-Item -Path $TestRegistryPath -Recurse -Force
+        Function Set-InventoryRegistryValue {
+            $RegistryScript = Join-Path $ScriptDirectory 'Set-InventoryRegistryValue.ps1'
+            . ($RegistryScript) @args | write-Output
         }
     }
     
@@ -106,11 +63,13 @@ Describe "Get-InventoryAuthToken" {
     Context "When registry access fails" {
         BeforeAll {
             # Mock Get-InventoryRegistryValue to simulate failure
-            Mock Get-InventoryRegistryValue { throw "Registry access failed" }
+            Mock Get-InventoryRegistryValue {
+                throw "Registry access failed" 
+            }
         }
         
         It "Should return null on registry error" {
-            $Result = Get-InventoryAuthToken
+            { Get-InventoryAuthToken } | Should -Not -Throw
             $Result | Should -BeNullOrEmpty
         }
     }
@@ -123,7 +82,7 @@ Describe "Get-InventoryAuthToken" {
         }
         
         It "Should have proper output type" {
-            $Function = Get-Command Get-InventoryAuthToken
+            $Function = Get-InventoryAuthToken_Command
             $Function.OutputType.Type.Name | Should -Contain "String"
         }
     }

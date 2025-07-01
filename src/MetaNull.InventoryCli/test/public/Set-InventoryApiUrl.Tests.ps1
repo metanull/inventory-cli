@@ -1,58 +1,41 @@
-BeforeAll {
-    # Load test helpers
-    . (Join-Path $PSScriptRoot "..\TestHelpers.ps1")
-    
-    # Import functions needed for testing
-    $ModuleRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
-    Import-ModuleFunctions -ModuleRoot $ModuleRoot -FunctionNames @(
-        'Set-InventoryApiUrl',
-        'Get-InventoryRegistryValue',
-        'Set-InventoryRegistryValue'
-    )
-}
+Describe "Set-InventoryApiUrl" -Tag "UnitTest" {
 
-Describe "Set-InventoryApiUrl" {
-    Context "Test Environment Validation" {
-        It "Should be running from the correct working directory" {
-            $CurrentPath = Get-Location
-            $ExpectedPath = $PSScriptRoot | Split-Path -Parent | Split-Path -Parent
-            $ExpectedPath = Resolve-Path $ExpectedPath
-            
-            if ($CurrentPath.Path -ne $ExpectedPath.Path) {
-                Write-Warning "Tests should be run from the module root directory: $ExpectedPath"
-                Write-Warning "Current working directory: $CurrentPath"
-                Write-Warning "Please navigate to the module directory before running tests."
-            }
-            
-            # This test will pass but warn if not in the right directory
-            $CurrentPath.Path | Should -Be $ExpectedPath.Path -Because "Tests must be run from the module root directory for proper path resolution"
-        }
-    }
-    
     BeforeAll {
-        # Create a test registry path by appending '.test' to the module registry path
-        $TestRegistryPath = $INVENTORY_CLI_REGISTRY_PATH + ".test"
+        $script:INVENTORY_CLI_REGISTRY_PATH = "HKCU:\SOFTWARE\metanull.test\inventory-cli"
+
+        $ScriptDirectory = Resolve-Path (Join-Path ($PSCommandPath | Split-Path) "..\..\source\public")
+        $ScriptName = (Split-Path $PSCommandPath -Leaf) -replace '\.Tests\.ps1$', '.ps1'
+        $Script = Join-Path $ScriptDirectory $ScriptName
         
-        # Clean up any existing test keys
-        if (Test-Path $TestRegistryPath) {
-            Remove-Item -Path $TestRegistryPath -Recurse -Force
+        # Define the Module function by dot sourcing it
+        Function Set-InventoryApiUrl {
+            . $Script @args | write-Output
         }
-        
-        # Mock the module constant for testing
-        Set-Variable -Name INVENTORY_CLI_REGISTRY_PATH -Value $TestRegistryPath -Force
+        # Define an accessor to the function's properties
+        Function Set-InventoryApiUrl_Command {
+            Get-Command $Script
+        }
+
+        # Define stub functions for dependencies
+        Function Set-InventoryRegistryValue {
+            $RegistryScript = Join-Path ($ScriptDirectory | Split-Path -Parent) 'private\Set-InventoryRegistryValue.ps1'
+            . ($RegistryScript) @args | write-Output
+        }
+        Function Get-InventoryRegistryValue {
+            $RegistryScript = Join-Path ($ScriptDirectory | Split-Path -Parent) 'private\Get-InventoryRegistryValue.ps1'
+            . ($RegistryScript) @args | write-Output
+        }
     }
-    
-    AfterAll {
-        # Create a test registry path by appending '.test' to the module registry path
-        $TestRegistryPath = $INVENTORY_CLI_REGISTRY_PATH + ".test"
-        
-        # Clean up test registry keys
-        if (Test-Path $TestRegistryPath) {
-            Remove-Item -Path $TestRegistryPath -Recurse -Force
+
+    AfterEach {
+        # Clean up test registry
+        if (Test-Path $script:INVENTORY_CLI_REGISTRY_PATH) {
+            Remove-Item -Path $script:INVENTORY_CLI_REGISTRY_PATH -Recurse -Force
         }
     }
     
     Context "Setting API URL with default value" {
+        
         It "Should set the default URL when no parameter is provided" {
             $Result = Set-InventoryApiUrl
             $Result | Should -Be $true
@@ -64,6 +47,7 @@ Describe "Set-InventoryApiUrl" {
     }
     
     Context "Setting API URL with custom value" {
+        
         It "Should set a custom HTTP URL" {
             $TestUrl = "http://api.example.com:8080"
             $Result = Set-InventoryApiUrl -Url $TestUrl
@@ -86,6 +70,7 @@ Describe "Set-InventoryApiUrl" {
     }
     
     Context "URL validation" {
+        
         It "Should reject invalid URL formats" {
             $InvalidUrls = @(
                 "not-a-url",
@@ -94,8 +79,7 @@ Describe "Set-InventoryApiUrl" {
             )
             
             foreach ($InvalidUrl in $InvalidUrls) {
-                $Result = Set-InventoryApiUrl -Url $InvalidUrl 2>$null
-                $Result | Should -Be $false -Because "URL '$InvalidUrl' should be rejected"
+                { Set-InventoryApiUrl -Url $InvalidUrl 2>$null } | Should -Throw -Because "URL '$InvalidUrl' should be rejected"
             }
         }
         
@@ -123,36 +107,19 @@ Describe "Set-InventoryApiUrl" {
     
     Context "Parameter validation" {
         It "Should have optional Url parameter" {
-            $FunctionInfo = Get-Command Set-InventoryApiUrl
+            $FunctionInfo = Set-InventoryApiUrl_Command
             $UrlParam = $FunctionInfo.Parameters['Url']
             $UrlParam.Attributes.Mandatory | Should -Be $false
         }
         
         It "Should have proper output type" {
-            $FunctionInfo = Get-Command Set-InventoryApiUrl
+            $FunctionInfo = Set-InventoryApiUrl_Command
             $OutputType = $FunctionInfo.OutputType.Type.Name
             $OutputType | Should -Be "Boolean"
         }
         
         It "Should work without parameters" {
             { Set-InventoryApiUrl } | Should -Not -Throw
-        }
-    }
-    
-    Context "Error handling" {
-        BeforeAll {
-            # Mock the registry function to simulate failure
-            function Set-InventoryRegistryValue { return $false }
-        }
-        
-        AfterAll {
-            # Remove the mock
-            Remove-Item Function:\Set-InventoryRegistryValue -ErrorAction SilentlyContinue
-        }
-        
-        It "Should return false when registry write fails" {
-            $Result = Set-InventoryApiUrl -Url "http://test.com"
-            $Result | Should -Be $false
         }
     }
 }

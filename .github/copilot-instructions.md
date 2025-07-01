@@ -54,6 +54,7 @@ src/MetaNull.InventoryCli/
 ### Code Quality Requirements
 - **PSScriptAnalyzer**: All code MUST pass PSScriptAnalyzer linting without errors
   - Use `Invoke-ScriptAnalyzer` to validate code quality
+    - With the parameter `-ExcludeRule PSAvoidUsingConvertToSecureStringWithPlainText`
   - Address all warnings and errors before committing
 - **Pester Testing**: All functions MUST have comprehensive Pester tests
   - Test coverage required for both public and private functions

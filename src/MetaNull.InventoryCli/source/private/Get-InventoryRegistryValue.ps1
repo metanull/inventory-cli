@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
 Gets a value from the module's registry configuration.
 
@@ -25,28 +25,28 @@ Returns the registry value if it exists, $null otherwise.
 param(
     [Parameter(Mandatory = $true)]
     [string]$KeyName,
-    
+
     [Parameter(Mandatory = $true)]
     [string]$ValueName
 )
 
 try {
     $RegistryPath = Join-Path -Path $INVENTORY_CLI_REGISTRY_PATH -ChildPath $KeyName
-    
+
     # First check if the key exists
     if (-not (Test-Path -Path $RegistryPath -PathType Container)) {
         Write-Verbose "Registry key does not exist: $RegistryPath"
         return $null
     }
-    
+
     # Try to get the value
     $Value = Get-ItemProperty -Path $RegistryPath -Name $ValueName -ErrorAction SilentlyContinue
-    
+
     if ($null -eq $Value) {
         Write-Verbose "Registry value '$ValueName' not found in key: $RegistryPath"
         return $null
     }
-    
+
     $Result = $Value.$ValueName
     Write-Verbose "Retrieved registry value '$ValueName' from key '$RegistryPath': $Result"
     return $Result

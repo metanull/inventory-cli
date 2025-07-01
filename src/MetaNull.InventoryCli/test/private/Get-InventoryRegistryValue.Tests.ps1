@@ -1,58 +1,33 @@
-BeforeAll {
-    # Load test helpers
-    . (Join-Path $PSScriptRoot "..\TestHelpers.ps1")
-    
-    # Import functions needed for testing
-    $ModuleRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
-    Import-ModuleFunctions -ModuleRoot $ModuleRoot -FunctionNames @(
-        'Get-InventoryRegistryValue'
-    )
-    
-    # Create a test registry path by appending '.test' to the module registry path
-    $TestRegistryPath = $INVENTORY_CLI_REGISTRY_PATH + ".test"
-}
+Describe "Get-InventoryRegistryValue" -Tag "UnitTest" {
 
-Describe "Get-InventoryRegistryValue" {
-    Context "Test Environment Validation" {
-        It "Should be running from the correct working directory" {
-            $CurrentPath = Get-Location
-            $ExpectedPath = $PSScriptRoot | Split-Path -Parent | Split-Path -Parent
-            $ExpectedPath = Resolve-Path $ExpectedPath
-            
-            if ($CurrentPath.Path -ne $ExpectedPath.Path) {
-                Write-Warning "Tests should be run from the module root directory: $ExpectedPath"
-                Write-Warning "Current working directory: $CurrentPath"
-                Write-Warning "Please navigate to the module directory before running tests."
-            }
-            
-            # This test will pass but warn if not in the right directory
-            $CurrentPath.Path | Should -Be $ExpectedPath.Path -Because "Tests must be run from the module root directory for proper path resolution"
-        }
-    }
-    
     BeforeAll {
-        # Clean up any existing test keys
-        if (Test-Path $TestRegistryPath) {
-            Remove-Item -Path $TestRegistryPath -Recurse -Force
+        $script:INVENTORY_CLI_REGISTRY_PATH = "HKCU:\SOFTWARE\metanull.test\inventory-cli"
+
+        $ScriptDirectory = Resolve-Path (Join-Path ($PSCommandPath | Split-Path) "..\..\source\private")
+        $ScriptName = (Split-Path $PSCommandPath -Leaf) -replace '\.Tests\.ps1$', '.ps1'
+        $Script = Join-Path $ScriptDirectory $ScriptName
+        
+        # Define the Module function by dot sourcing it
+        Function Get-InventoryRegistryValue {
+            . $Script @args | write-Output
         }
-    }
-    
-    AfterAll {
-        # Clean up test registry keys
-        if (Test-Path $TestRegistryPath) {
-            Remove-Item -Path $TestRegistryPath -Recurse -Force
+        # Define an accessor to the function's properties
+        Function Get-InventoryRegistryValue_Command {
+            Get-Command $Script
+        }
+
+
+        Function Set-InventoryRegistryValue {
+            $RegistryScript = Join-Path $ScriptDirectory 'Set-InventoryRegistryValue.ps1'
+            . ($RegistryScript) @args | write-Output
         }
     }
     
     Context "When registry key and value exist" {
         BeforeAll {
-            # Create test registry key and value
-            New-Item -Path $TestRegistryPath -Force | Out-Null
-            New-Item -Path (Join-Path $TestRegistryPath "TestKey") -Force | Out-Null
-            Set-ItemProperty -Path (Join-Path $TestRegistryPath "TestKey") -Name "TestValue" -Value "TestData"
-            
-            # Mock the module constant for testing
-            Set-Variable -Name INVENTORY_CLI_REGISTRY_PATH -Value $TestRegistryPath -Force
+            New-Item -Path $script:INVENTORY_CLI_REGISTRY_PATH -Force | Out-Null
+            New-Item -Path (Join-Path $script:INVENTORY_CLI_REGISTRY_PATH "TestKey") -Force | Out-Null
+            Set-ItemProperty -Path (Join-Path $script:INVENTORY_CLI_REGISTRY_PATH "TestKey") -Name "TestValue" -Value "TestData"
         }
         
         It "Should return the correct value" {
@@ -62,12 +37,8 @@ Describe "Get-InventoryRegistryValue" {
     
     Context "When registry key exists but value does not" {
         BeforeAll {
-            # Create test registry key without the value
-            New-Item -Path $TestRegistryPath -Force | Out-Null
-            New-Item -Path (Join-Path $TestRegistryPath "TestKey") -Force | Out-Null
-            
-            # Mock the module constant for testing
-            Set-Variable -Name INVENTORY_CLI_REGISTRY_PATH -Value $TestRegistryPath -Force
+            New-Item -Path $script:INVENTORY_CLI_REGISTRY_PATH -Force | Out-Null
+            New-Item -Path (Join-Path $script:INVENTORY_CLI_REGISTRY_PATH "TestKey") -Force | Out-Null
         }
         
         It "Should return null" {
@@ -77,8 +48,6 @@ Describe "Get-InventoryRegistryValue" {
     
     Context "When registry key does not exist" {
         BeforeAll {
-            # Mock the module constant for testing
-            Set-Variable -Name INVENTORY_CLI_REGISTRY_PATH -Value $TestRegistryPath -Force
         }
         
         It "Should return null" {
@@ -88,8 +57,6 @@ Describe "Get-InventoryRegistryValue" {
     
     Context "When parent registry path does not exist" {
         BeforeAll {
-            # Mock the module constant to point to non-existent path
-            Set-Variable -Name INVENTORY_CLI_REGISTRY_PATH -Value "HKCU:\SOFTWARE\nonexistent\path" -Force
         }
         
         It "Should return null" {
@@ -100,14 +67,14 @@ Describe "Get-InventoryRegistryValue" {
     Context "Parameter validation" {
         It "Should require KeyName parameter" {
             # Use Get-Command to check parameter requirements
-            $FunctionInfo = Get-Command Get-InventoryRegistryValue
+            $FunctionInfo = Get-InventoryRegistryValue_Command
             $KeyNameParam = $FunctionInfo.Parameters['KeyName']
             $KeyNameParam.Attributes.Mandatory | Should -Be $true
         }
         
         It "Should require ValueName parameter" {
             # Use Get-Command to check parameter requirements
-            $FunctionInfo = Get-Command Get-InventoryRegistryValue
+            $FunctionInfo = Get-InventoryRegistryValue_Command
             $ValueNameParam = $FunctionInfo.Parameters['ValueName']
             $ValueNameParam.Attributes.Mandatory | Should -Be $true
         }
@@ -120,15 +87,12 @@ Describe "Get-InventoryRegistryValue" {
     Context "Different value types" {
         BeforeAll {
             # Create test registry key
-            New-Item -Path $TestRegistryPath -Force | Out-Null
-            New-Item -Path (Join-Path $TestRegistryPath "TestKey") -Force | Out-Null
+            New-Item -Path $script:INVENTORY_CLI_REGISTRY_PATH -Force | Out-Null
+            New-Item -Path (Join-Path $script:INVENTORY_CLI_REGISTRY_PATH "TestKey") -Force | Out-Null
             
             # Set different types of values
-            Set-ItemProperty -Path (Join-Path $TestRegistryPath "TestKey") -Name "StringValue" -Value "TestString" -Type String
-            Set-ItemProperty -Path (Join-Path $TestRegistryPath "TestKey") -Name "DWordValue" -Value 42 -Type DWord
-            
-            # Mock the module constant for testing
-            Set-Variable -Name INVENTORY_CLI_REGISTRY_PATH -Value $TestRegistryPath -Force
+            Set-ItemProperty -Path (Join-Path $script:INVENTORY_CLI_REGISTRY_PATH "TestKey") -Name "StringValue" -Value "TestString" -Type String
+            Set-ItemProperty -Path (Join-Path $script:INVENTORY_CLI_REGISTRY_PATH "TestKey") -Name "DWordValue" -Value 42 -Type DWord
         }
         
         It "Should retrieve string values correctly" {

@@ -1,104 +1,84 @@
-BeforeAll {
-    # Load test helpers
-    . (Join-Path $PSScriptRoot "..\TestHelpers.ps1")
-    
-    # Import functions needed for testing
-    $ModuleRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
-    Import-ModuleFunctions -ModuleRoot $ModuleRoot -FunctionNames @(
-        'Test-InventoryRegistryKey'
-    )
-    
-    # Create a test registry path by appending '.test' to the module registry path
-    $TestRegistryPath = $INVENTORY_CLI_REGISTRY_PATH + ".test"
-}
+Describe "Test-InventoryRegistryKey" -Tag "UnitTest" {
 
-Describe "Test-InventoryRegistryKey" {
-    Context "Test Environment Validation" {
-        It "Should be running from the correct working directory" {
-            $CurrentPath = Get-Location
-            $ExpectedPath = $PSScriptRoot | Split-Path -Parent | Split-Path -Parent
-            $ExpectedPath = Resolve-Path $ExpectedPath
-            
-            if ($CurrentPath.Path -ne $ExpectedPath.Path) {
-                Write-Warning "Tests should be run from the module root directory: $ExpectedPath"
-                Write-Warning "Current working directory: $CurrentPath"
-                Write-Warning "Please navigate to the module directory before running tests."
-            }
-            
-            # This test will pass but warn if not in the right directory
-            $CurrentPath.Path | Should -Be $ExpectedPath.Path -Because "Tests must be run from the module root directory for proper path resolution"
-        }
-    }
-    
     BeforeAll {
-        # Clean up any existing test keys
-        if (Test-Path $TestRegistryPath) {
-            Remove-Item -Path $TestRegistryPath -Recurse -Force
+        $script:INVENTORY_CLI_REGISTRY_PATH = "HKCU:\SOFTWARE\metanull.test\inventory-cli"
+
+        $ScriptDirectory = Resolve-Path (Join-Path ($PSCommandPath | Split-Path) "..\..\source\private")
+        $ScriptName = (Split-Path $PSCommandPath -Leaf) -replace '\.Tests\.ps1$', '.ps1'
+        $Script = Join-Path $ScriptDirectory $ScriptName
+        
+        # Define the Module function by dot sourcing it
+        Function Test-InventoryRegistryKey {
+            . $Script @args | write-Output
         }
-    }
-    
-    AfterAll {
-        # Clean up test registry keys
-        if (Test-Path $TestRegistryPath) {
-            Remove-Item -Path $TestRegistryPath -Recurse -Force
+        # Define an accessor to the function's properties
+        Function Test-InventoryRegistryKey_Command {
+            Get-Command $Script
         }
     }
     
     Context "When registry key exists" {
         BeforeAll {
             # Create test registry key
-            New-Item -Path $TestRegistryPath -Force | Out-Null
-            New-Item -Path (Join-Path $TestRegistryPath "TestKey") -Force | Out-Null
+            New-Item -Path $script:INVENTORY_CLI_REGISTRY_PATH -Force | Out-Null
+            New-Item -Path (Join-Path $script:INVENTORY_CLI_REGISTRY_PATH "ExistingKey") -Force | Out-Null
         }
         
-        It "Should return true for existing key (using test path)" {
-            # Test with the actual test path instead of trying to override the constant
-            $TestResult = Test-Path -Path (Join-Path $TestRegistryPath "TestKey") -PathType Container
-            $TestResult | Should -Be $true
-        }
-        
-        It "Should handle the function correctly" {
-            # This test validates the function works (may use the real registry path)
-            { Test-InventoryRegistryKey -KeyName "TestKey" -ErrorAction SilentlyContinue } | Should -Not -Throw
+        It "Should return true for existing key" {
+            $Result = Test-InventoryRegistryKey -KeyName "ExistingKey"
+            $Result | Should -Be $true
         }
     }
     
     Context "When registry key does not exist" {
-        It "Should return false for non-existent key" {
-            $Result = Test-InventoryRegistryKey -KeyName "NonExistentKey-$(Get-Random)" -ErrorAction SilentlyContinue
+        It "Should return false for non-existing key" {
+            $Result = Test-InventoryRegistryKey -KeyName "NonExistentKey"
             $Result | Should -Be $false
-        }
-        
-        It "Should handle errors gracefully" {
-            # Test with a key name that's guaranteed not to exist
-            { Test-InventoryRegistryKey -KeyName "DefinitelyNonExistentKey-$(Get-Random)" -ErrorAction SilentlyContinue } | Should -Not -Throw
         }
     }
     
     Context "When parent registry path does not exist" {
-        It "Should handle non-existent parent paths gracefully" {
-            # This test verifies the function doesn't crash when the parent path doesn't exist
-            # We use ErrorAction SilentlyContinue to suppress any expected error messages
-            { Test-InventoryRegistryKey -KeyName "AnyKey" -ErrorAction SilentlyContinue } | Should -Not -Throw
-        }
-        
-        It "Should return false for keys under non-existent paths" {
-            # This validates the expected behavior without generating red error messages
-            $Result = Test-InventoryRegistryKey -KeyName "TestKey" -ErrorAction SilentlyContinue
-            $Result | Should -BeOfType [bool]
+        It "Should return false when parent path does not exist" {
+            $Result = Test-InventoryRegistryKey -KeyName "AnyKey"
+            $Result | Should -Be $false
         }
     }
     
     Context "Parameter validation" {
         It "Should require KeyName parameter" {
-            # Use Get-Command to check parameter requirements instead of calling the function
-            $FunctionInfo = Get-Command Test-InventoryRegistryKey
-            $KeyNameParam = $FunctionInfo.Parameters['KeyName']
-            $KeyNameParam.Attributes.Mandatory | Should -Be $true
+            $Function = Test-InventoryRegistryKey_Command
+            $Function.Parameters.KeyName.Attributes.Mandatory | Should -Be $true
         }
         
-        It "Should accept string for KeyName" {
-            { Test-InventoryRegistryKey -KeyName "TestKey" -ErrorAction SilentlyContinue } | Should -Not -Throw
+        It "Should accept string parameter" {
+            { Test-InventoryRegistryKey -KeyName "TestKey" } | Should -Not -Throw
+        }
+        
+        It "Should have proper output type" {
+            $Function = Test-InventoryRegistryKey_Command
+            $Function.OutputType.Type.Name | Should -Contain "Boolean"
+        }
+    }
+    
+    Context "Edge cases" {
+        BeforeAll {
+            # Create test registry structure
+            New-Item -Path $script:INVENTORY_CLI_REGISTRY_PATH -Force | Out-Null
+            New-Item -Path (Join-Path $script:INVENTORY_CLI_REGISTRY_PATH "EmptyKey") -Force | Out-Null
+        }
+        
+        It "Should return true for empty registry key" {
+            $Result = Test-InventoryRegistryKey -KeyName "EmptyKey"
+            $Result | Should -Be $true
+        }
+        
+        It "Should handle special characters in key names" {
+            # Create key with special characters (if valid)
+            $SpecialKeyName = "Key-With_Special.Characters"
+            New-Item -Path (Join-Path $script:INVENTORY_CLI_REGISTRY_PATH $SpecialKeyName) -Force | Out-Null
+            
+            $Result = Test-InventoryRegistryKey -KeyName $SpecialKeyName
+            $Result | Should -Be $true
         }
     }
 }
