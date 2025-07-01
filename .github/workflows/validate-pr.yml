@@ -10,9 +10,37 @@ on:
       - '.github/workflows/**'
 
 jobs:
+  codeql:
+    name: CodeQL Security Analysis
+    runs-on: windows-latest
+    permissions:
+      security-events: write
+      actions: read
+      contents: read
+    
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+      
+    - name: Initialize CodeQL
+      uses: github/codeql-action/init@v3
+      with:
+        languages: javascript
+        config: |
+          name: "CodeQL Config"
+          disable-default-queries: false
+          queries:
+            - uses: security-and-quality
+    
+    - name: Perform CodeQL Analysis
+      uses: github/codeql-action/analyze@v3
+      with:
+        category: "/language:javascript"
+
   validate:
     name: Validate PowerShell Code
     runs-on: windows-latest
+    needs: codeql
     
     steps:
     - name: Checkout Repository
