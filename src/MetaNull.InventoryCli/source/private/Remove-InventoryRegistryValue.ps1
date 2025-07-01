@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
 Removes a registry value from the module's registry configuration.
 
@@ -25,24 +25,24 @@ Returns $true if the value was removed successfully, $false otherwise.
 param(
     [Parameter(Mandatory = $true)]
     [string]$KeyName,
-    
+
     [Parameter(Mandatory = $true)]
     [string]$ValueName
 )
 
 try {
     Write-Verbose "Removing registry value '$ValueName' from key '$KeyName'"
-    
+
     # Check if the registry key exists
     if (-not (Test-InventoryRegistryKey -KeyName $KeyName)) {
         Write-Verbose "Registry key '$KeyName' does not exist, nothing to remove"
         return $true
     }
-    
+
     # Build the full registry path
     $RegistryPath = Join-Path $INVENTORY_CLI_REGISTRY_PATH $KeyName
     Write-Verbose "Registry path: $RegistryPath"
-    
+
     # Check if the value exists
     try {
         Get-ItemProperty -Path $RegistryPath -Name $ValueName -ErrorAction Stop | Out-Null
@@ -52,11 +52,11 @@ try {
         Write-Verbose "Registry value '$ValueName' does not exist in key '$KeyName', nothing to remove"
         return $true
     }
-    
+
     # Remove the registry value
     Remove-ItemProperty -Path $RegistryPath -Name $ValueName -ErrorAction Stop
     Write-Verbose "Successfully removed registry value '$ValueName' from key '$KeyName'"
-    
+
     return $true
 }
 catch {

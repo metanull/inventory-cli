@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
 Logs into the inventory API and stores the authentication token.
 
@@ -29,43 +29,46 @@ Returns $true if authentication was successful, $false otherwise.
 [OutputType([bool])]
 param(
     [Parameter(Mandatory = $true)]
-    [System.Management.Automation.PSCredential]$Credential,
-    
+    [ValidateNotNull()]
+    [System.Management.Automation.PSCredential]
+    [System.Management.Automation.Credential()]
+    $Credential = [System.Management.Automation.PSCredential]::Empty,
+
     [Parameter(Mandatory = $false)]
     [string]$ApiUrl
 )
 
 try {
     Write-Verbose "Starting authentication process"
-    
+
     # Get API URL if not provided
     if ([string]::IsNullOrEmpty($ApiUrl)) {
         $ApiUrl = Get-InventoryApiUrl
         Write-Verbose "Using configured API URL: $ApiUrl"
     }
-    
+
     # Prepare authentication request
     $AuthEndpoint = "$ApiUrl/auth/login"
     $AuthBody = @{
         username = $Credential.UserName
         password = $Credential.GetNetworkCredential().Password
     } | ConvertTo-Json
-    
+
     Write-Verbose "Attempting authentication with endpoint: $AuthEndpoint"
-    
+
     # Make authentication request
     try {
         $Response = Invoke-RestMethod -Uri $AuthEndpoint -Method POST -Body $AuthBody -ContentType "application/json" -ErrorAction Stop
-        
+
         if ($Response.token) {
             Write-Verbose "Authentication successful, storing token"
-            
+
             # Convert token to SecureString and store it
             $SecureToken = ConvertTo-SecureString -String $Response.token -AsPlainText -Force
             $EncryptedToken = ConvertFrom-SecureString -SecureString $SecureToken
-            
+
             $Result = Set-InventoryRegistryValue -KeyName "Authentication" -ValueName "Token" -Value $EncryptedToken -ValueType "String"
-            
+
             if ($Result) {
                 Write-Verbose "Token stored successfully in registry"
                 return $true

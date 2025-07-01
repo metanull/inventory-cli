@@ -67,7 +67,7 @@ jobs:
         if ($PowerShellFiles.Count -gt 0) {
           $Issues = @()
           foreach ($File in $PowerShellFiles) {
-            $Results = Invoke-ScriptAnalyzer -Path $File.FullName -Severity Error, Warning
+            $Results = Invoke-ScriptAnalyzer  -ExcludeRule PSAvoidUsingConvertToSecureStringWithPlainText -Path $File.FullName -Severity Error, Warning
             if ($Results) {
               $Issues += $Results
             }

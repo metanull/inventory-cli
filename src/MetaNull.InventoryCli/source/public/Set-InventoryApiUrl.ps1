@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
 Sets the API URL for the inventory system.
 
@@ -28,10 +28,10 @@ param(
     [ValidateNotNullOrEmpty()]
     [string]$Url = "http://127.0.0.1:8000"
 )
-    
+
     try {
         Write-Verbose "Setting API URL to: $Url"
-        
+
         # Validate URL format
         try {
             $Uri = [System.Uri]::new($Url)
@@ -43,16 +43,16 @@ param(
             Write-Error "Invalid URL format: $Url. Error: $($_.Exception.Message)"
             return $false
         }
-        
+
         # Set the URL in registry
         $Result = Set-InventoryRegistryValue -KeyName "Configuration" -ValueName "ApiUrl" -Value $Url -ValueType "String"
-        
+
         if ($Result) {
             Write-Verbose "Successfully set API URL to: $Url"
         } else {
             Write-Warning "Failed to set API URL in registry"
         }
-        
+
     return $Result
 }
 catch {

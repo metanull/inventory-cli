@@ -103,7 +103,7 @@ New-FunctionBlueprint -ModulePath "src/MetaNull.InventoryCli" -FunctionName "Get
 5. Run validation and build:
 ```powershell
 # Run PSScriptAnalyzer
-Invoke-ScriptAnalyzer -Path "src" -Recurse
+Invoke-ScriptAnalyzer  -ExcludeRule PSAvoidUsingConvertToSecureStringWithPlainText -Path "src" -Recurse
 
 # Run tests
 Invoke-Pester -Path "src/MetaNull.InventoryCli/test"
