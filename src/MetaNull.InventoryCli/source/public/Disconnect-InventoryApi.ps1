@@ -49,13 +49,13 @@ try {
         
         # Notify API server about logout
         try {
-            $LogoutEndpoint = "$ApiUrl/auth/logout"
+            $LogoutEndpoint = "$ApiUrl/mobile/wipe"
             $Headers = @{
                 "Authorization" = "Bearer $CurrentToken"
             }
             
             Write-Verbose "Notifying API server about logout: $LogoutEndpoint"
-            Invoke-RestMethod -Uri $LogoutEndpoint -Method POST -Headers $Headers -ErrorAction Stop
+            Invoke-RestMethod -Uri $LogoutEndpoint -Method GET -Headers $Headers -ErrorAction Stop
             Write-Verbose "Successfully notified API server about logout"
         }
         catch {

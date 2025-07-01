@@ -45,10 +45,12 @@ try {
     }
     
     # Prepare authentication request
-    $AuthEndpoint = "$ApiUrl/auth/login"
+    $AuthEndpoint = "$ApiUrl/mobile/acquire-token"
     $AuthBody = @{
-        username = $Credential.UserName
+        email = $Credential.UserName
         password = $Credential.GetNetworkCredential().Password
+        device_name = "$env:COMPUTERNAME-PowerShell"
+        wipe_tokens = $false
     } | ConvertTo-Json
     
     Write-Verbose "Attempting authentication with endpoint: $AuthEndpoint"
@@ -57,11 +59,11 @@ try {
     try {
         $Response = Invoke-RestMethod -Uri $AuthEndpoint -Method POST -Body $AuthBody -ContentType "application/json" -ErrorAction Stop
         
-        if ($Response.token) {
+        if ($Response -and $Response -is [string] -and $Response.Length -gt 0) {
             Write-Verbose "Authentication successful, storing token"
             
             # Convert token to SecureString and store it
-            $SecureToken = ConvertTo-SecureString -String $Response.token -AsPlainText -Force
+            $SecureToken = ConvertTo-SecureString -String $Response -AsPlainText -Force
             $EncryptedToken = ConvertFrom-SecureString -SecureString $SecureToken
             
             $Result = Set-InventoryRegistryValue -KeyName "Authentication" -ValueName "Token" -Value $EncryptedToken -ValueType "String"
@@ -74,7 +76,7 @@ try {
                 return $false
             }
         } else {
-            Write-Error "Authentication response did not contain a token"
+            Write-Error "Authentication response did not contain a valid token"
             return $false
         }
     }
