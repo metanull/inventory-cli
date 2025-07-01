@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
 Removes the API URL configuration from the inventory system.
 
@@ -17,19 +17,19 @@ Returns $true if the URL was removed successfully, $false otherwise.
 [CmdletBinding(SupportsShouldProcess)]
 [OutputType([bool])]
 param()
-    
+
     try {
         Write-Verbose "Removing API URL from registry configuration"
-        
+
         if ($PSCmdlet.ShouldProcess("API URL configuration", "Remove")) {
             # Check if the value exists first
             $CurrentUrl = Get-InventoryRegistryValue -KeyName "Configuration" -ValueName "ApiUrl"
-            
+
             if ($null -eq $CurrentUrl) {
                 Write-Verbose "API URL is not currently configured"
                 return $true
             }
-            
+
             # Remove the value from registry
             try {
                 $RegistryPath = Join-Path -Path $INVENTORY_CLI_REGISTRY_PATH -ChildPath "Configuration"
@@ -42,7 +42,7 @@ param()
                 return $false
             }
         }
-    
+
     return $true
 }
 catch {

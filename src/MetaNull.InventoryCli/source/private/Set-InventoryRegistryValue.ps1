@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
 Sets a value in the module's registry configuration.
 
@@ -37,15 +37,15 @@ param(
     [Parameter(Mandatory = $true)]
     [ValidateNotNullOrEmpty()]
     [string]$KeyName,
-    
+
     [Parameter(Mandatory = $true)]
     [ValidateNotNullOrEmpty()]
     [string]$ValueName,
-    
+
     [Parameter(Mandatory = $true)]
     [AllowEmptyString()]
     [object]$Value,
-    
+
     [Parameter(Mandatory = $false)]
     [ValidateSet('String', 'DWord', 'QWord', 'Binary', 'MultiString', 'ExpandString')]
     [string]$ValueType = 'String'
@@ -53,20 +53,20 @@ param(
 
 try {
     Write-Verbose "Setting registry value '$ValueName' in key '$KeyName' to '$Value' (Type: $ValueType)"
-    
+
     # Construct full registry path
     $RegistryPath = Join-Path $INVENTORY_CLI_REGISTRY_PATH $KeyName
     Write-Verbose "Full registry path: $RegistryPath"
-    
+
     # Ensure the registry key exists (create if necessary)
     if (-not (Test-Path $RegistryPath)) {
         Write-Verbose "Creating registry key: $RegistryPath"
         New-Item -Path $RegistryPath -Force | Out-Null
     }
-    
+
     # Set the registry value
     Set-ItemProperty -Path $RegistryPath -Name $ValueName -Value $Value -Type $ValueType -Force
-    
+
     # Verify the value was set correctly
     try {
         $VerifyValue = Get-ItemProperty -Path $RegistryPath -Name $ValueName -ErrorAction Stop

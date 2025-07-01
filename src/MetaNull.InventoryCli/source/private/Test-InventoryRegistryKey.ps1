@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
 Tests if a registry key exists in the module's registry path.
 
@@ -12,7 +12,7 @@ The name of the registry key to test for existence.
 .EXAMPLE
 Test-InventoryRegistryKey -KeyName "Configuration"
 Tests if the "Configuration" key exists in the module's registry path.
-    
+
     .OUTPUTS
     [bool]
     Returns $true if the registry key exists, $false otherwise.
@@ -23,11 +23,11 @@ Tests if the "Configuration" key exists in the module's registry path.
         [Parameter(Mandatory = $true)]
         [string]$KeyName
     )
-    
+
     try {
         $RegistryPath = Join-Path -Path $INVENTORY_CLI_REGISTRY_PATH -ChildPath $KeyName
         $KeyExists = Test-Path -Path $RegistryPath -PathType Container
-    
+
     Write-Verbose "Testing registry key existence: $RegistryPath - Result: $KeyExists"
     return $KeyExists
 }
